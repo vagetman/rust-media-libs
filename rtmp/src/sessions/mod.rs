@@ -12,27 +12,27 @@ being managed (in any direction) each connection should have its own, distinct, 
 It is also expected that a session has been created *after* handshaking has been completed.
 */
 
-mod server;
 mod client;
+mod server;
 
 pub use self::client::ClientSession;
-pub use self::client::ClientSessionEvent;
 pub use self::client::ClientSessionConfig;
 pub use self::client::ClientSessionError;
 pub use self::client::ClientSessionErrorKind;
+pub use self::client::ClientSessionEvent;
 pub use self::client::ClientSessionResult;
 pub use self::client::ClientState;
 pub use self::client::PublishRequestType;
 
 pub use self::server::ServerSession;
-pub use self::server::ServerSessionEvent;
 pub use self::server::ServerSessionConfig;
 pub use self::server::ServerSessionError;
 pub use self::server::ServerSessionErrorKind;
+pub use self::server::ServerSessionEvent;
 pub use self::server::ServerSessionResult;
 
-use std::collections::HashMap;
 use rml_amf0::Amf0Value;
+use std::collections::HashMap;
 
 /// Contains the metadata information a stream may advertise on publishing
 #[derive(PartialEq, Debug, Clone)]
@@ -47,7 +47,7 @@ pub struct StreamMetadata {
     pub audio_sample_rate: Option<u32>,
     pub audio_channels: Option<u32>,
     pub audio_is_stereo: Option<bool>,
-    pub encoder: Option<String>
+    pub encoder: Option<String>,
 }
 
 impl StreamMetadata {
@@ -64,67 +64,78 @@ impl StreamMetadata {
             audio_sample_rate: None,
             audio_channels: None,
             audio_is_stereo: None,
-            encoder: None
+            encoder: None,
         }
     }
 
     fn apply_metadata_values(&mut self, mut properties: HashMap<String, Amf0Value>) {
         for (key, value) in properties.drain() {
             match key.as_ref() {
-                "width" => match value.get_number() {
-                    Some(x) => self.video_width = Some(x as u32),
-                    None => (),
-                },
+                "width" => {
+                    if let Some(x) = value.get_number() {
+                        self.video_width = Some(x as u32)
+                    }
+                }
 
-                "height" => match value.get_number() {
-                    Some(x) => self.video_height = Some(x as u32),
-                    None => (),
-                },
+                "height" => {
+                    if let Some(x) = value.get_number() {
+                        self.video_height = Some(x as u32)
+                    }
+                }
 
-                "videocodecid" => match value.get_string() {
-                    Some(x) => self.video_codec = Some(x),
-                    None => (),
-                },
+                "videocodecid" => {
+                    if let Some(x) = value.get_string() {
+                        self.video_codec = Some(x)
+                    }
+                }
 
-                "videodatarate" => match value.get_number() {
-                    Some(x) => self.video_bitrate_kbps = Some(x as u32),
-                    None => (),
-                },
+                "videodatarate" => {
+                    if let Some(x) = value.get_number() {
+                        self.video_bitrate_kbps = Some(x as u32)
+                    }
+                }
 
-                "framerate" => match value.get_number() {
-                    Some(x) => self.video_frame_rate = Some(x as f32),
-                    None => (),
-                },
+                "framerate" => {
+                    if let Some(x) = value.get_number() {
+                        self.video_frame_rate = Some(x as f32)
+                    }
+                }
 
-                "audiocodecid" => match value.get_string() {
-                    Some(x) => self.audio_codec = Some(x),
-                    None => (),
-                },
+                "audiocodecid" => {
+                    if let Some(x) = value.get_string() {
+                        self.audio_codec = Some(x)
+                    }
+                }
 
-                "audiodatarate" => match value.get_number() {
-                    Some(x) => self.audio_bitrate_kbps = Some(x as u32),
-                    None => (),
-                },
+                "audiodatarate" => {
+                    if let Some(x) = value.get_number() {
+                        self.audio_bitrate_kbps = Some(x as u32)
+                    }
+                }
 
-                "audiosamplerate" => match value.get_number() {
-                    Some(x) => self.audio_sample_rate = Some(x as u32),
-                    None => (),
-                },
+                "audiosamplerate" => {
+                    if let Some(x) = value.get_number() {
+                        self.audio_sample_rate = Some(x as u32)
+                    }
+                }
 
-                "audiochannels" => match value.get_number() {
-                    Some(x) => self.audio_channels = Some(x as u32),
-                    None => (),
-                },
+                "audiochannels" => {
+                    if let Some(x) = value.get_number() {
+                        self.audio_channels = Some(x as u32)
+                    }
+                }
 
-                "stereo" => match value.get_boolean() {
-                    Some(x) => self.audio_is_stereo = Some(x),
-                    None => (),
-                },
+                "stereo" => {
+                    if let Some(x) = value.get_boolean() {
+                        self.audio_is_stereo = Some(x)
+                    }
+                }
 
-                "encoder" => match value.get_string() {
-                    Some(x) => self.encoder = Some(x),
-                    None => (),
-                },
+                "encoder" => {
+                    if let Some(x) = value.get_string() {
+                        self.encoder = Some(x)
+                    }
+                }
 
                 _ => (),
             }
