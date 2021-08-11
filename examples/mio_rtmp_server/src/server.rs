@@ -1,13 +1,9 @@
 use super::PushOptions;
 use bytes::Bytes;
 use rml_rtmp::chunk_io::Packet;
-use rml_rtmp::sessions::{
-    ClientSession, ClientSessionConfig, ClientSessionEvent, ClientSessionResult,
-};
+use rml_rtmp::sessions::{ClientSession, ClientSessionConfig, ClientSessionEvent, ClientSessionResult};
 use rml_rtmp::sessions::{PublishRequestType, StreamMetadata};
-use rml_rtmp::sessions::{
-    ServerSession, ServerSessionConfig, ServerSessionEvent, ServerSessionResult,
-};
+use rml_rtmp::sessions::{ServerSession, ServerSessionConfig, ServerSessionEvent, ServerSessionResult};
 use rml_rtmp::time::RtmpTimestamp;
 use slab::Slab;
 use std::collections::{HashMap, HashSet};
@@ -36,10 +32,7 @@ impl InboundClient {
         match self.current_action {
             InboundClientAction::Waiting => None,
             InboundClientAction::Publishing(_) => None,
-            InboundClientAction::Watching {
-                stream_key: _,
-                stream_id,
-            } => Some(stream_id),
+            InboundClientAction::Watching {stream_key: _, stream_id} => Some(stream_id),
         }
     }
 }
@@ -102,13 +95,14 @@ pub enum ServerResult {
 pub struct Server {
     clients: Slab<InboundClient>,
     connection_to_client_map: HashMap<usize, usize>,
-    channels: HashMap<String, MediaChannel>,
+    channels   : HashMap<String, MediaChannel>,
     pull_client: Option<PullClient>,
     push_client: Option<PushClient>,
 }
 
 impl Server {
     pub fn new(push_options: &Option<PushOptions>) -> Server {
+
         let push_client = push_options.as_ref().map(|options| PushClient {
             push_app: options.app.clone(),
             push_source_stream: options.source_stream.clone(),
@@ -117,6 +111,7 @@ impl Server {
             session: None,
             state: PushState::Inactive,
         });
+
 
         Server {
             clients: Slab::with_capacity(1024),
@@ -135,15 +130,13 @@ impl Server {
         target_stream: String,
     ) {
         // Pre-create the target channel.
-        self.channels
-            .entry(target_stream.clone())
-            .or_insert(MediaChannel {
-                publishing_client_id: Some(connection_id),
-                watching_client_ids: HashSet::new(),
-                metadata: None,
-                video_sequence_header: None,
-                audio_sequence_header: None,
-            });
+        self.channels.entry(target_stream.clone()).or_insert(MediaChannel {
+            publishing_client_id: Some(connection_id),
+            watching_client_ids: HashSet::new(),
+            metadata: None,
+            video_sequence_header: None,
+            audio_sequence_header: None,
+        });
 
         self.pull_client = Some(PullClient {
             session: None,
@@ -182,8 +175,7 @@ impl Server {
             let mut initial_session_results = Vec::new();
             if let Some(ref mut pull_client) = self.pull_client {
                 if pull_client.session.is_none() {
-                    let (session, session_results) =
-                        ClientSession::new(ClientSessionConfig::new()).unwrap();
+                    let (session, session_results) = ClientSession::new(ClientSessionConfig::new()).unwrap();
                     pull_client.session = Some(session);
 
                     for result in session_results {
@@ -192,15 +184,7 @@ impl Server {
                 }
             }
 
-            let session_results = match self
-                .pull_client
-                .as_mut()
-                .unwrap()
-                .session
-                .as_mut()
-                .unwrap()
-                .handle_input(bytes)
-            {
+            let session_results = match self.pull_client.as_mut().unwrap().session.as_mut().unwrap().handle_input(bytes) {
                 Ok(results) => results,
                 Err(error) => return Err(error.to_string()),
             };
@@ -210,10 +194,7 @@ impl Server {
             }
 
             self.handle_pull_session_results(session_results, &mut server_results);
-        } else if push_client_connection_id
-            .as_ref()
-            .map_or(false, |id| *id == connection_id)
-        {
+        } else if push_client_connection_id.as_ref().map_or(false, |id| *id == connection_id) {
             // These bytes were received by the current push client
             let mut initial_session_results = Vec::new();
 
@@ -250,11 +231,7 @@ impl Server {
                     Err(error) => return Err(error.to_string()),
                 };
 
-                self.handle_server_session_results(
-                    connection_id,
-                    initial_session_results,
-                    &mut server_results,
-                );
+                self.handle_server_session_results(connection_id, initial_session_results, &mut server_results);
                 let client = InboundClient {
                     session,
                     connection_id,
@@ -262,11 +239,9 @@ impl Server {
                     has_received_video_keyframe: false,
                 };
 
-                let client_id = self.clients.insert(client);
-                self.connection_to_client_map
-                    .insert(connection_id, client_id);
+                let client_id = Some(self.clients.insert(client));
+                self.connection_to_client_map.insert(connection_id, client_id.unwrap());
             }
-
             let client_results;
             {
                 let client_id = self.connection_to_client_map.get(&connection_id).unwrap();
@@ -281,7 +256,9 @@ impl Server {
         }
 
         Ok(server_results)
+
     }
+
 
     pub fn notify_connection_closed(&mut self, connection_id: usize) {
         if self
@@ -291,20 +268,17 @@ impl Server {
         {
             self.pull_client = None;
         } else {
-            match self.connection_to_client_map.remove(&connection_id) {
-                None => (),
-                Some(client_id) => {
-                    let client = self.clients.remove(client_id);
-                    match client.current_action {
-                        InboundClientAction::Publishing(stream_key) => {
-                            self.publishing_ended(stream_key)
-                        }
-                        InboundClientAction::Watching {
-                            stream_key,
-                            stream_id: _,
-                        } => self.play_ended(client_id, stream_key),
-                        InboundClientAction::Waiting => (),
+            if let Some(client_id) =  self.connection_to_client_map.remove(&connection_id) {
+                let client = self.clients.remove(client_id);
+                match client.current_action {
+                    InboundClientAction::Publishing(stream_key) => {
+                        self.publishing_ended(stream_key)
                     }
+                    InboundClientAction::Watching {
+                        stream_key,
+                        stream_id: _,
+                    } => self.play_ended(client_id, stream_key),
+                    InboundClientAction::Waiting => (),
                 }
             }
         }
@@ -341,94 +315,31 @@ impl Server {
         server_results: &mut Vec<ServerResult>,
     ) {
         match event {
-            ServerSessionEvent::ConnectionRequested {
-                request_id,
-                app_name,
-            } => {
-                self.handle_connection_requested(
-                    executed_connection_id,
-                    request_id,
-                    app_name,
-                    server_results,
-                );
-            }
+            ServerSessionEvent::ConnectionRequested {request_id, app_name} => {
+                self.handle_connection_requested(executed_connection_id, request_id, app_name, server_results);
+            },
 
-            ServerSessionEvent::PublishStreamRequested {
-                request_id,
-                app_name,
-                stream_key,
-                mode: _,
-            } => {
-                self.handle_publish_requested(
-                    executed_connection_id,
-                    request_id,
-                    app_name,
-                    stream_key,
-                    server_results,
-                );
-            }
+            ServerSessionEvent::PublishStreamRequested {request_id, app_name, stream_key, mode: _} => {
+                self.handle_publish_requested(executed_connection_id, request_id, app_name, stream_key, server_results);
+            },
 
-            ServerSessionEvent::PlayStreamRequested {
-                request_id,
-                app_name,
-                stream_key,
-                start_at: _,
-                duration: _,
-                reset: _,
-                stream_id,
-            } => {
-                self.handle_play_requested(
-                    executed_connection_id,
-                    request_id,
-                    app_name,
-                    stream_key,
-                    stream_id,
-                    server_results,
-                );
-            }
+            ServerSessionEvent::PlayStreamRequested {request_id, app_name, stream_key, start_at: _, duration: _, reset: _, stream_id} => {
+                self.handle_play_requested(executed_connection_id, request_id, app_name, stream_key, stream_id, server_results);
+            },
 
-            ServerSessionEvent::StreamMetadataChanged {
-                app_name,
-                stream_key,
-                metadata,
-            } => {
+            ServerSessionEvent::StreamMetadataChanged {app_name, stream_key, metadata} => {
                 self.handle_metadata_received(app_name, stream_key, metadata, server_results);
             }
 
-            ServerSessionEvent::VideoDataReceived {
-                app_name: _,
-                stream_key,
-                data,
-                timestamp,
-            } => {
-                self.handle_audio_video_data_received(
-                    stream_key,
-                    timestamp,
-                    data,
-                    ReceivedDataType::Video,
-                    server_results,
-                );
-            }
+            ServerSessionEvent::VideoDataReceived {app_name: _, stream_key, data, timestamp} => {
+                self.handle_audio_video_data_received(stream_key, timestamp, data, ReceivedDataType::Video, server_results);
+            },
 
-            ServerSessionEvent::AudioDataReceived {
-                app_name: _,
-                stream_key,
-                data,
-                timestamp,
-            } => {
-                self.handle_audio_video_data_received(
-                    stream_key,
-                    timestamp,
-                    data,
-                    ReceivedDataType::Audio,
-                    server_results,
-                );
-            }
+            ServerSessionEvent::AudioDataReceived {app_name: _, stream_key, data, timestamp} => {
+                self.handle_audio_video_data_received(stream_key, timestamp, data, ReceivedDataType::Audio, server_results);
+            },
 
-            _ => println!(
-                "Event raised by connection {}: {:?}",
-                executed_connection_id, event
-            ),
+            _ => println!("Event raised by connection {}: {:?}", executed_connection_id, event),
         }
     }
 
@@ -439,17 +350,11 @@ impl Server {
         app_name: String,
         server_results: &mut Vec<ServerResult>,
     ) {
-        println!(
-            "Connection {} requested connection to app '{}'",
-            requested_connection_id, app_name
-        );
+        println!("Connection {} requested connection to app '{}'", requested_connection_id, app_name);
 
         let accept_result;
         {
-            let client_id = self
-                .connection_to_client_map
-                .get(&requested_connection_id)
-                .unwrap();
+            let client_id = self.connection_to_client_map.get(&requested_connection_id).unwrap();
             let client = self.clients.get_mut(*client_id).unwrap();
             accept_result = client.session.accept_request(request_id);
         }
@@ -463,11 +368,7 @@ impl Server {
             }
 
             Ok(results) => {
-                self.handle_server_session_results(
-                    requested_connection_id,
-                    results,
-                    server_results,
-                );
+                self.handle_server_session_results(requested_connection_id, results, server_results);
             }
         }
     }
@@ -480,31 +381,21 @@ impl Server {
         stream_key: String,
         server_results: &mut Vec<ServerResult>,
     ) {
-        println!(
-            "Publish requested on app '{}' and stream key '{}'",
-            app_name, stream_key
-        );
+        println!("Publish requested on app '{}' and stream key '{}'", app_name, stream_key);
 
-        match self.channels.get(&stream_key) {
-            None => (),
-            Some(channel) => match channel.publishing_client_id {
-                None => (),
-                Some(_) => {
-                    println!("Stream key already being published to");
-                    server_results.push(ServerResult::DisconnectConnection {
-                        connection_id: requested_connection_id,
-                    });
-                    return;
-                }
-            },
-        }
+        if let Some(channel) = self.channels.get(&stream_key) {
+            if channel.publishing_client_id.is_some() {
+                println!("Stream key already being published to");
+                server_results.push(ServerResult::DisconnectConnection {
+                    connection_id: requested_connection_id,
+                });
+                return;
+            }
+        };
 
         let accept_result;
         {
-            let client_id = self
-                .connection_to_client_map
-                .get(&requested_connection_id)
-                .unwrap();
+            let client_id = self.connection_to_client_map.get(&requested_connection_id).unwrap();
             let client = self.clients.get_mut(*client_id).unwrap();
             client.current_action = InboundClientAction::Publishing(stream_key.clone());
 
@@ -544,11 +435,7 @@ impl Server {
                     }
                 }
 
-                self.handle_server_session_results(
-                    requested_connection_id,
-                    results,
-                    server_results,
-                );
+                self.handle_server_session_results(requested_connection_id, results, server_results);
             }
         }
     }
@@ -562,10 +449,7 @@ impl Server {
         stream_id: u32,
         server_results: &mut Vec<ServerResult>,
     ) {
-        println!(
-            "Play requested on app '{}' and stream key '{}'",
-            app_name, stream_key
-        );
+        println!("Play requested on app '{}' and stream key '{}'", app_name, stream_key);
 
         let accept_result;
         {
@@ -593,78 +477,53 @@ impl Server {
                 Ok(mut results) => {
                     // If the channel already has existing metadata, send that to the new client
                     // so they have up to date info
-                    match channel.metadata {
-                        None => (),
-                        Some(ref metadata) => {
-                            let packet = match client.session.send_metadata(stream_id, metadata) {
-                                Ok(packet) => packet,
-                                Err(error) => {
-                                    println!("Error occurred sending existing metadata to new client: {:?}", error);
-                                    server_results.push(ServerResult::DisconnectConnection {
-                                        connection_id: requested_connection_id,
-                                    });
+                    if let Some(ref metadata) = channel.metadata {
+                        let packet = match client.session.send_metadata(stream_id, metadata) {
+                            Ok(packet) => packet,
+                            Err(error) => {
+                                println!("Error occurred sending existing metadata to new client: {:?}", error);
+                                server_results.push(ServerResult::DisconnectConnection {
+                                    connection_id: requested_connection_id}
+                                );
 
-                                    return;
-                                }
-                            };
+                                return;
+                            }
+                        };
 
-                            results.push(ServerSessionResult::OutboundResponse(packet));
-                        }
+                        results.push(ServerSessionResult::OutboundResponse(packet));
                     }
 
                     // If the channel already has sequence headers, send them
-                    match channel.video_sequence_header {
-                        None => (),
-                        Some(ref data) => {
-                            let packet = match client.session.send_video_data(
-                                stream_id,
-                                data.clone(),
-                                RtmpTimestamp::new(0),
-                                false,
-                            ) {
-                                Ok(packet) => packet,
-                                Err(error) => {
-                                    println!(
-                                        "Error occurred sending video header to new client: {:?}",
-                                        error
-                                    );
-                                    server_results.push(ServerResult::DisconnectConnection {
-                                        connection_id: requested_connection_id,
-                                    });
+                    if let Some(ref data) = channel.video_sequence_header {
+                        let packet = match client.session.send_video_data(stream_id, data.clone(), RtmpTimestamp::new(0), false) {
+                            Ok(packet) => packet,
+                            Err(error) => {
+                                println!("Error occurred sending video header to new client: {:?}", error);
+                                server_results.push(ServerResult::DisconnectConnection {
+                                    connection_id: requested_connection_id,
+                                });
 
-                                    return;
-                                }
-                            };
+                                return;
+                            }
+                        };
 
-                            results.push(ServerSessionResult::OutboundResponse(packet));
-                        }
+                        results.push(ServerSessionResult::OutboundResponse(packet));
                     }
 
-                    match channel.audio_sequence_header {
-                        None => (),
-                        Some(ref data) => {
-                            let packet = match client.session.send_audio_data(
-                                stream_id,
-                                data.clone(),
-                                RtmpTimestamp::new(0),
-                                false,
-                            ) {
-                                Ok(packet) => packet,
-                                Err(error) => {
-                                    println!(
-                                        "Error occurred sending audio header to new client: {:?}",
-                                        error
-                                    );
-                                    server_results.push(ServerResult::DisconnectConnection {
-                                        connection_id: requested_connection_id,
-                                    });
+                    if let Some(ref data) = channel.audio_sequence_header {
+                        let packet = match client.session.send_audio_data(stream_id, data.clone(), RtmpTimestamp::new(0), false) {
+                            Ok(packet) => packet,
+                            Err(error) => {
+                                println!("Error occurred sending audio header to new client: {:?}", error);
+                                server_results.push(ServerResult::DisconnectConnection {
+                                    connection_id: requested_connection_id,
+                                });
 
-                                    return;
-                                }
-                            };
+                                return;
+                            }
+                        };
 
-                            results.push(ServerSessionResult::OutboundResponse(packet));
-                        }
+                        results.push(ServerSessionResult::OutboundResponse(packet));
                     }
 
                     Ok(results)
@@ -681,11 +540,7 @@ impl Server {
             }
 
             Ok(results) => {
-                self.handle_server_session_results(
-                    requested_connection_id,
-                    results,
-                    server_results,
-                );
+                self.handle_server_session_results(requested_connection_id, results, server_results)
             }
         }
     }
@@ -697,10 +552,7 @@ impl Server {
         metadata: StreamMetadata,
         server_results: &mut Vec<ServerResult>,
     ) {
-        println!(
-            "New metadata received for app '{}' and stream key '{}'",
-            app_name, stream_key
-        );
+        println!("New metadata received for app '{}' and stream key '{}'", app_name, stream_key);
         let channel = match self.channels.get_mut(&stream_key) {
             Some(channel) => channel,
             None => return,
@@ -728,10 +580,7 @@ impl Server {
                 }),
 
                 Err(error) => {
-                    println!(
-                        "Error sending metadata to client on connection id {}: {:?}",
-                        client.connection_id, error
-                    );
+                    println!("Error sending metadata to client on connection id {}: {:?}", client.connection_id, error);
                     server_results.push(ServerResult::DisconnectConnection {
                         connection_id: client.connection_id,
                     });
@@ -798,23 +647,13 @@ impl Server {
                 }
 
                 let send_result = match data_type {
-                    ReceivedDataType::Audio => client.session.send_audio_data(
-                        active_stream_id,
-                        data.clone(),
-                        timestamp,
-                        true,
-                    ),
+                    ReceivedDataType::Audio => client.session.send_audio_data(active_stream_id, data.clone(), timestamp, true),
                     ReceivedDataType::Video => {
                         if is_video_keyframe(data.clone()) {
                             client.has_received_video_keyframe = true;
                         }
 
-                        client.session.send_video_data(
-                            active_stream_id,
-                            data.clone(),
-                            timestamp,
-                            true,
-                        )
+                        client.session.send_video_data(active_stream_id, data.clone(), timestamp, true)
                     }
                 };
 
@@ -842,16 +681,10 @@ impl Server {
             if let Some(ref mut client) = self.push_client {
                 if client.state == PushState::Pushing {
                     let result = match data_type {
-                        ReceivedDataType::Video => client
-                            .session
-                            .as_mut()
-                            .unwrap()
+                        ReceivedDataType::Video => client.session.as_mut().unwrap()
                             .publish_video_data(data, timestamp, true),
 
-                        ReceivedDataType::Audio => client
-                            .session
-                            .as_mut()
-                            .unwrap()
+                        ReceivedDataType::Audio => client.session.as_mut().unwrap()
                             .publish_audio_data(data, timestamp, true),
                     };
 
@@ -919,12 +752,7 @@ impl Server {
                 // initiate the connect to the RTMP app
                 client.state = PullState::Connecting;
 
-                let result = client
-                    .session
-                    .as_mut()
-                    .unwrap()
-                    .request_connection(client.pull_app.clone())
-                    .unwrap();
+                let result = client.session.as_mut().unwrap().request_connection(client.pull_app.clone()).unwrap();
                 new_results.push(result);
             };
         }
@@ -944,21 +772,11 @@ impl Server {
                 }
 
                 ClientSessionEvent::VideoDataReceived { data, timestamp } => {
-                    self.handle_pull_audio_video_data_received(
-                        data,
-                        ReceivedDataType::Video,
-                        timestamp,
-                        server_results,
-                    );
+                    self.handle_pull_audio_video_data_received(data, ReceivedDataType::Video, timestamp, server_results);
                 }
 
                 ClientSessionEvent::AudioDataReceived { data, timestamp } => {
-                    self.handle_pull_audio_video_data_received(
-                        data,
-                        ReceivedDataType::Audio,
-                        timestamp,
-                        server_results,
-                    );
+                    self.handle_pull_audio_video_data_received(data, ReceivedDataType::Audio, timestamp, server_results);
                 }
 
                 ClientSessionEvent::StreamMetadataReceived { metadata } => {
@@ -976,12 +794,7 @@ impl Server {
             println!("Pull accepted for app '{}'", client.pull_app);
             client.state = PullState::Connected;
 
-            let result = client
-                .session
-                .as_mut()
-                .unwrap()
-                .request_playback(client.pull_stream.clone())
-                .unwrap();
+            let result = client.session.as_mut().unwrap().request_playback(client.pull_stream.clone()).unwrap();
             let mut results = vec![result];
             new_results.append(&mut results);
         }
@@ -1010,13 +823,7 @@ impl Server {
             None => return,
         };
 
-        self.handle_audio_video_data_received(
-            stream_key,
-            timestamp,
-            data,
-            data_type,
-            server_results,
-        );
+        self.handle_audio_video_data_received(stream_key, timestamp, data, data_type, server_results);
     }
 
     fn handle_pull_metadata_received(
@@ -1062,12 +869,7 @@ impl Server {
                 // to initiate the connection process
                 client.state = PushState::Connecting;
 
-                let result = match client
-                    .session
-                    .as_mut()
-                    .unwrap()
-                    .request_connection(client.push_app.clone())
-                {
+                let result = match client.session.as_mut().unwrap().request_connection(client.push_app.clone()) {
                     Ok(result) => result,
                     Err(error) => {
                         println!("Failed to request connection for push client: {:?}", error);
@@ -1104,10 +906,7 @@ impl Server {
             println!("push accepted for app '{}'", client.push_app);
             client.state = PushState::Connected;
 
-            let result = client
-                .session
-                .as_mut()
-                .unwrap()
+            let result = client.session.as_mut().unwrap()
                 .request_publishing(client.push_target_stream.clone(), PublishRequestType::Live)
                 .unwrap();
 
@@ -1123,42 +922,26 @@ impl Server {
     fn handle_push_publish_accepted_event(&mut self, server_results: &mut Vec<ServerResult>) {
         let mut new_results = Vec::new();
         if let Some(ref mut client) = self.push_client {
-            println!(
-                "Publish accepted for push stream key {}",
-                client.push_target_stream
-            );
+            println!("Publish accepted for push stream key {}", client.push_target_stream);
             client.state = PushState::Pushing;
 
             // Send out any metadata or header information if we have any
             if let Some(channel) = self.channels.get(&client.push_source_stream) {
                 if let Some(ref metadata) = channel.metadata {
-                    let result = client
-                        .session
-                        .as_mut()
-                        .unwrap()
-                        .publish_metadata(metadata)
-                        .unwrap();
+                    let result = client.session.as_mut().unwrap().publish_metadata(metadata).unwrap();
                     new_results.push(result);
                 }
 
                 if let Some(ref bytes) = channel.video_sequence_header {
-                    let result = client
-                        .session
-                        .as_mut()
-                        .unwrap()
-                        .publish_video_data(bytes.clone(), RtmpTimestamp::new(0), false)
-                        .unwrap();
+                    let result = client.session.as_mut().unwrap()
+                        .publish_video_data(bytes.clone(), RtmpTimestamp::new(0), false).unwrap();
 
                     new_results.push(result);
                 }
 
                 if let Some(ref bytes) = channel.audio_sequence_header {
-                    let result = client
-                        .session
-                        .as_mut()
-                        .unwrap()
-                        .publish_audio_data(bytes.clone(), RtmpTimestamp::new(0), false)
-                        .unwrap();
+                    let result = client.session.as_mut().unwrap()
+                        .publish_audio_data(bytes.clone(), RtmpTimestamp::new(0), false).unwrap();
 
                     new_results.push(result);
                 }
@@ -1173,15 +956,21 @@ impl Server {
 
 fn is_video_sequence_header(data: Bytes) -> bool {
     // This is assuming h264.
-    data.len() >= 2 && data[0] == 0x17 && data[1] == 0x00
+    data.len() >= 2
+        && data[0] == 0x17
+        && data[1] == 0x00
 }
 
 fn is_audio_sequence_header(data: Bytes) -> bool {
     // This is assuming aac
-    data.len() >= 2 && data[0] == 0xaf && data[1] == 0x00
+    data.len() >= 2
+        && data[0] == 0xaf
+        && data[1] == 0x00
 }
 
 fn is_video_keyframe(data: Bytes) -> bool {
     // assumings h264
-    data.len() >= 2 && data[0] == 0x17 && data[1] != 0x00 // 0x00 is the sequence header, don't count that for now
+    data.len() >= 2
+        && data[0] == 0x17
+        && data[1] != 0x00 // 0x00 is the sequence header, don't count that for now
 }
